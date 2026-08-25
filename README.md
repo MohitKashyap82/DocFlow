@@ -1,51 +1,68 @@
 # DocFlow
-Event-Driven Document Processing Pipeline on AWS
 
+Event-driven document processing pipeline on AWS, provisioned entirely with Terraform and deployed through GitHub Actions.
 
-Project: Distributed Document Processing & Alerting Pipeline
+Users upload a file through a FastAPI service; the pipeline processes it asynchronously, tracks its status, and fans out a completion notification — a pattern used throughout real-world fintech/enterprise ingestion systems.
 
-Concept: Users upload files (invoices, logs, compliance reports — tie it to your PCI DSS angle for narrative consistency with NetGuard) through an API. The system processes them asynchronously, fans out notifications, and tracks state — a pattern used everywhere in real fintech/enterprise systems.
+## Architecture
 
-Architecture flow:
+```
+Browser ──▶ ALB ──▶ ECS Fargate (FastAPI) ──▶ S3 (presigned PUT)
+                                                    │
+                                          S3 ObjectCreated event
+                                                    ▼
+                                              SQS ──────────▶ SQS DLQ
+                                          (complyflow-processing)   (after 3 failed attempts)
+                                                    │
+                                                    ▼
+                                          Lambda worker (compliance check stub)
+                                                    │
+                                        ┌───────────┴───────────┐
+                                        ▼                       ▼
+                                  DynamoDB (status)         SNS topic
+                                                                 │
+                                                    ┌────────────┴────────────┐
+                                                    ▼                         ▼
+                                              Email alert              SQS audit-log queue
+```
 
-ALB → ECS/EC2 API layer — Application Load Balancer fronts a small API (FastAPI again, for consistency with NetGuard) that accepts file uploads and issues presigned URLs.
-S3 — Raw files land here. S3 event notification triggers the pipeline on ObjectCreated.
-SQS — S3 event pushes to an SQS queue (decouples ingestion from processing — if your processor is down or slow, uploads don't fail, they just queue up). Use this to demonstrate dead-letter queues for poison messages — a detail interviewers specifically listen for.
-Worker (Lambda or ECS task) — Polls SQS, processes the file (e.g., virus scan stub, metadata extraction, compliance check against a ruleset), writes results to DynamoDB.
-DynamoDB — Stores processing status/results per file (partition key: file ID, sort key: timestamp) — good place to show single-table design and on-demand vs provisioned capacity reasoning.
-SNS — On completion (or failure), publish to an SNS topic that fans out to multiple subscribers: an email notification (SES or just SNS email), a Slack webhook via Lambda subscriber, and optionally another SQS queue for downstream audit logging. This demonstrates fan-out pattern, which is the single most interview-relevant use of SNS+SQS together.
+- **API layer** — FastAPI on ECS Fargate behind an Application Load Balancer. Issues S3 presigned URLs so uploads go straight from the browser to S3, never through the API server itself.
+- **Ingestion decoupling** — an S3 event notification lands on an SQS queue rather than invoking the worker directly, so a slow or unavailable worker never blocks uploads. A dead-letter queue catches messages that fail processing three times.
+- **Processing** — a Lambda function consumes the queue, runs a (stubbed) compliance check, and writes status transitions to DynamoDB.
+- **Fan-out** — on completion, SNS publishes to two independent subscribers in parallel: an email alert and an SQS queue for audit logging — the classic SNS+SQS fan-out pattern for one event needing multiple independent consumers.
 
-Why this is a strong CV project specifically for you:
+## Infrastructure & CI/CD
 
-It's the SNS+SQS fan-out + queue decoupling pattern, which is one of the most commonly asked "design a system" interview questions — you'll have a real repo to point to instead of whiteboarding cold.
-ALB + ECS/Lambda shows you're comfortable with both container and serverless compute choices, and can justify when to use which.
-DynamoDB single-table design is a genuinely differentiating skill — most candidates only know RDS.
-You can layer in Terraform (consistent with NetGuard) and a GitLab/GitHub Actions CI/CD pipeline, so the two repos read as a coherent portfolio built by someone who thinks in IaC, not console clicks.
-Natural place to add a DLQ + CloudWatch alarm + SNS alert loop, which shows operational maturity (not just "happy path" building).
+Everything above is defined in [`infra/`](infra/) as three independent Terraform stacks:
 
-Scope for a realistic timeline: This is buildable in 1-2 weeks if you keep the "processing" logic simple (a stub compliance check is fine — the infrastructure pattern is the point, not the business logic).
+| Stack | Contents | Lifecycle |
+|---|---|---|
+| `bootstrap` | Terraform state backend (S3 + DynamoDB lock table), GitHub OIDC deploy role | Applied once, by hand |
+| `backbone` | S3, DynamoDB, SQS + DLQ, Lambda, SNS | Always on — free/near-free when idle |
+| `compute` | ALB, ECS cluster/service/task definition, security groups | Spun up and torn down on demand |
 
-Want me to draft the Terraform module structure and repo layout for this one, the way we've been doing for NetGuard?
+Splitting `compute` out separately means the only AWS spend that scales with "is anyone actually using this right now" — the ALB and Fargate task — can be toggled independently of the always-on data pipeline, without touching stored data or SNS subscriptions.
 
-what will be suitable project heading ?
+[GitHub Actions](.github/workflows/) drives all three:
+- **`build-and-push.yml`** — builds and pushes the API image to ECR on changes to `api/`
+- **`backbone.yml`** — plans on every change, applies on manual approval
+- **`compute.yml`** — manual `up`/`down` dispatch to stand up or tear down the ALB + ECS service
 
-A few options depending on how you want to position it — technical/precise vs. slightly more narrative:
+Every workflow authenticates to AWS via **OIDC federation** — no long-lived AWS access keys are stored in GitHub.
 
-Straightforward/technical (good for CV bullet + repo name):
+## Tech stack
 
-DocFlow — Event-Driven Document Processing Pipeline on AWS
-PipelineGuard — Serverless Document Processing & Compliance Pipeline
-FlowSentry — Async Document Processing Pipeline (SNS/SQS/DynamoDB/S3)
+**API:** Python, FastAPI, boto3, Docker
+**Data/messaging:** S3, SQS, Lambda, DynamoDB, SNS
+**Compute:** ECS Fargate, Application Load Balancer
+**IaC/CI:** Terraform, GitHub Actions, GitHub OIDC
 
-Ties it to your compliance/security narrative (consistent with NetGuard's positioning):
+## Repo layout
 
-ComplyFlow — Event-Driven Compliance Document Processing Pipeline
-AuditPipe — Serverless Compliance Ingestion & Alerting Pipeline
+```
+api/          FastAPI presigned-upload service
+infra/        Terraform: bootstrap / backbone / compute stacks
+.github/      CI/CD workflows
+```
 
-CV bullet version (what actually matters most):
-
-DocFlow — Event-driven document processing pipeline on AWS using SNS/SQS fan-out, DynamoDB, S3, ALB-fronted API, and Terraform-managed infra with GitLab CI/CD.
-
-My pick: go with DocFlow or ComplyFlow — short, readable, and the repo name doubles as something recruiters can actually remember and Google if they want to check it out. If you want it to echo NetGuard's naming style (single word, capitalized, descriptive), ComplyFlow pairs better thematically since both projects would then read as "security/compliance-minded infrastructure engineer," which is your strongest positioning angle given CISSP + PCNSE.
-
-Want me to set up the repo structure and README skeleton for whichever name you land on?
+See [`infra/README.md`](infra/README.md) for setup and day-to-day operation.
