@@ -14,8 +14,3 @@ resource "aws_dynamodb_table" "status" {
     type = "S"
   }
 }
-
-import {
-  to = aws_dynamodb_table.status
-  id = "complyflow-status"
-}

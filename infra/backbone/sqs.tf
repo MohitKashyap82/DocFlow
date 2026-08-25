@@ -111,28 +111,3 @@ resource "aws_sqs_queue_policy" "audit_log" {
   queue_url = aws_sqs_queue.audit_log.id
   policy    = data.aws_iam_policy_document.audit_log_queue_policy.json
 }
-
-import {
-  to = aws_sqs_queue.processing_dlq
-  id = "https://sqs.us-east-1.amazonaws.com/261161414394/complyflow-processing-dlq"
-}
-
-import {
-  to = aws_sqs_queue.processing
-  id = "https://sqs.us-east-1.amazonaws.com/261161414394/complyflow-processing"
-}
-
-import {
-  to = aws_sqs_queue.audit_log
-  id = "https://sqs.us-east-1.amazonaws.com/261161414394/complyflow-audit-log"
-}
-
-import {
-  to = aws_sqs_queue_policy.processing
-  id = "https://sqs.us-east-1.amazonaws.com/261161414394/complyflow-processing"
-}
-
-import {
-  to = aws_sqs_queue_policy.audit_log
-  id = "https://sqs.us-east-1.amazonaws.com/261161414394/complyflow-audit-log"
-}

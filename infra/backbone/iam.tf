@@ -30,33 +30,3 @@ resource "aws_iam_role_policy_attachment" "worker_lambda" {
   role       = aws_iam_role.worker_lambda.name
   policy_arn = each.value
 }
-
-import {
-  to = aws_iam_role.worker_lambda
-  id = "complyflow-worker-lambda-role"
-}
-
-import {
-  to = aws_iam_role_policy_attachment.worker_lambda["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]
-  id = "complyflow-worker-lambda-role/arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-import {
-  to = aws_iam_role_policy_attachment.worker_lambda["arn:aws:iam::aws:policy/AmazonSNSFullAccess"]
-  id = "complyflow-worker-lambda-role/arn:aws:iam::aws:policy/AmazonSNSFullAccess"
-}
-
-import {
-  to = aws_iam_role_policy_attachment.worker_lambda["arn:aws:iam::aws:policy/AmazonSQSFullAccess"]
-  id = "complyflow-worker-lambda-role/arn:aws:iam::aws:policy/AmazonSQSFullAccess"
-}
-
-import {
-  to = aws_iam_role_policy_attachment.worker_lambda["arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"]
-  id = "complyflow-worker-lambda-role/arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
-}
-
-import {
-  to = aws_iam_role_policy_attachment.worker_lambda["arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"]
-  id = "complyflow-worker-lambda-role/arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
-}

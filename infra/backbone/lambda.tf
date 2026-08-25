@@ -25,13 +25,3 @@ resource "aws_lambda_event_source_mapping" "worker" {
   function_name    = aws_lambda_function.worker.arn
   batch_size       = 10
 }
-
-import {
-  to = aws_lambda_function.worker
-  id = "complyflow-worker"
-}
-
-import {
-  to = aws_lambda_event_source_mapping.worker
-  id = "3c031a4e-87a4-4474-8ef9-fc73aecab5ce"
-}

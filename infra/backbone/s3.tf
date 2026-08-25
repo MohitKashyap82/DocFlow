@@ -63,33 +63,3 @@ resource "aws_s3_bucket_notification" "uploads" {
 
   depends_on = [aws_sqs_queue_policy.processing]
 }
-
-import {
-  to = aws_s3_bucket.uploads
-  id = "complyflow-uploads-261161414394-us-east-1-an"
-}
-
-import {
-  to = aws_s3_bucket_versioning.uploads
-  id = "complyflow-uploads-261161414394-us-east-1-an"
-}
-
-import {
-  to = aws_s3_bucket_server_side_encryption_configuration.uploads
-  id = "complyflow-uploads-261161414394-us-east-1-an"
-}
-
-import {
-  to = aws_s3_bucket_public_access_block.uploads
-  id = "complyflow-uploads-261161414394-us-east-1-an"
-}
-
-import {
-  to = aws_s3_bucket_ownership_controls.uploads
-  id = "complyflow-uploads-261161414394-us-east-1-an"
-}
-
-import {
-  to = aws_s3_bucket_notification.uploads
-  id = "complyflow-uploads-261161414394-us-east-1-an"
-}
