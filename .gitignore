@@ -4,6 +4,9 @@ __pycache__/
 .venv/
 *.egg-info/
 
+# Personal notes -- not for the public repo
+INTERVIEW_QUESTIONS.md
+
 # Terraform
 **/.terraform/
 *.tfstate
