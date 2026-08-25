@@ -1,0 +1,51 @@
+name: Backbone Infra (S3/DynamoDB/SQS/Lambda/SNS)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/backbone/**"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action"
+        required: true
+        default: plan
+        type: choice
+        options: [plan, apply]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: AWS_ROLE_ARN
+    defaults:
+      run:
+        working-directory: infra/backbone
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - run: terraform init
+      - run: terraform validate
+      - run: terraform plan -no-color
+
+      # Applying here would re-run the import blocks against already-imported
+      # state, which is a no-op -- safe to leave in place permanently.
+      - name: Apply
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+        run: terraform apply -auto-approve

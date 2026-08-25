@@ -1,0 +1,54 @@
+name: Compute (ALB + ECS) Up/Down
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "up = spin up ALB+ECS, down = tear them down"
+        required: true
+        type: choice
+        options: [up, down]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: AWS_ROLE_ARN
+    defaults:
+      run:
+        working-directory: infra/compute
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - run: terraform init
+
+      - name: Plan (up)
+        if: github.event.inputs.action == 'up'
+        run: terraform plan -no-color -out=tfplan
+
+      - name: Apply (up)
+        if: github.event.inputs.action == 'up'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Print app URL
+        if: github.event.inputs.action == 'up'
+        run: terraform output -raw upload_url
+
+      - name: Destroy (down)
+        if: github.event.inputs.action == 'down'
+        run: terraform destroy -auto-approve
