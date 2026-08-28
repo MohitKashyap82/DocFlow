@@ -5,7 +5,6 @@ variable "aws_region" {
 }
 
 variable "alert_email" {
-  description = "Email address subscribed to the complyflow-events SNS topic"
+  description = "Email address subscribed to the complyflow-events SNS topic. Supplied at run time (TF_VAR_alert_email locally, a repo variable in CI) rather than defaulted here, so it isn't published in source."
   type        = string
-  default     = "mohitkashyap2003@gmail.com"
 }

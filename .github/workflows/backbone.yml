@@ -20,6 +20,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
+  TF_VAR_alert_email: ${{ vars.ALERT_EMAIL }}
 
 jobs:
   terraform:
