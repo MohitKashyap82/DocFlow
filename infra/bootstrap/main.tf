@@ -75,6 +75,12 @@ data "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 }
 
+locals {
+  github_repo_parts = split("/", var.github_repo)
+  github_owner      = local.github_repo_parts[0]
+  github_repo_name  = local.github_repo_parts[1]
+}
+
 data "aws_iam_policy_document" "github_actions_trust" {
   statement {
     effect  = "Allow"
@@ -91,10 +97,18 @@ data "aws_iam_policy_document" "github_actions_trust" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # GitHub's sub claim comes in two shapes depending on context: the classic
+    # "repo:owner/repo:..." form, and a newer one embedding immutable numeric
+    # IDs -- "repo:owner@ownerId/repo@repoId:..." (anti-spoofing hardening so
+    # a deleted-and-recreated repo of the same name can't reuse old tokens).
+    # Matching both keeps this working regardless of which GitHub sends.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:*"]
+      values = [
+        "repo:${var.github_repo}:*",
+        "repo:${local.github_owner}@*/${local.github_repo_name}@*:*",
+      ]
     }
   }
 }
@@ -127,14 +141,15 @@ data "aws_iam_policy_document" "github_actions_permissions" {
 
   # ComplyFlow application resources
   statement {
+    # Terraform's AWS provider probes many bucket-level settings on every
+    # refresh (accelerate config, logging, replication, etc.) regardless of
+    # whether this project's config touches them. Enumerating each one is
+    # whack-a-mole; s3:* is fine here since the resource scope is already
+    # tightly restricted to just this bucket.
     sid    = "ComplyFlowS3"
     effect = "Allow"
     actions = [
-      "s3:GetBucket*", "s3:PutBucket*", "s3:ListBucket",
-      "s3:GetObject", "s3:PutObject", "s3:DeleteObject",
-      "s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration",
-      "s3:GetBucketNotification", "s3:PutBucketNotification",
-      "s3:GetBucketCORS", "s3:PutBucketCORS",
+      "s3:*",
     ]
     resources = [
       "arn:aws:s3:::complyflow-uploads-*",
@@ -160,6 +175,19 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:complyflow-*"]
   }
   statement {
+    # Event source mapping ARNs are opaque UUIDs (not tied to the function
+    # name), so this can't be scoped down to just complyflow-* the way the
+    # statement above is.
+    sid    = "ComplyFlowLambdaEventSourceMapping"
+    effect = "Allow"
+    actions = [
+      "lambda:GetEventSourceMapping", "lambda:ListEventSourceMappings",
+      "lambda:CreateEventSourceMapping", "lambda:UpdateEventSourceMapping", "lambda:DeleteEventSourceMapping",
+      "lambda:ListTags", "lambda:TagResource", "lambda:UntagResource",
+    ]
+    resources = ["arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:event-source-mapping:*"]
+  }
+  statement {
     sid       = "ComplyFlowSNS"
     effect    = "Allow"
     actions   = ["sns:*"]
@@ -172,7 +200,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "iam:GetRole", "iam:CreateRole", "iam:DeleteRole", "iam:TagRole",
       "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies",
       "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy", "iam:ListRolePolicies",
-      "iam:PassRole",
+      "iam:ListInstanceProfilesForRole", "iam:PassRole",
     ]
     resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/complyflow-*"]
   }
@@ -202,7 +230,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     actions = [
       "ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage",
       "ecr:PutImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload",
-      "ecr:DescribeRepositories", "ecr:DescribeImages",
+      "ecr:DescribeRepositories", "ecr:DescribeImages", "ecr:ListTagsForResource",
     ]
     resources = ["arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/complyflow-api"]
   }
@@ -210,10 +238,20 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     sid    = "ComplyFlowLogs"
     effect = "Allow"
     actions = [
-      "logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:DescribeLogGroups",
-      "logs:PutRetentionPolicy", "logs:TagResource",
+      "logs:CreateLogGroup", "logs:DeleteLogGroup",
+      "logs:PutRetentionPolicy", "logs:TagResource", "logs:ListTagsForResource",
     ]
     resources = ["arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/complyflow*"]
+  }
+  statement {
+    # DescribeLogGroups is a listing call that doesn't scope cleanly to one
+    # log group's ARN -- AWS evaluates it against a generic log-group/
+    # log-stream resource shape rather than a specific name, so this needs
+    # account-wide resource scope even though the action itself is read-only.
+    sid       = "ComplyFlowLogsDescribe"
+    effect    = "Allow"
+    actions   = ["logs:DescribeLogGroups"]
+    resources = ["*"]
   }
   # ECS, ELBv2, and the EC2 security-group/VPC-describe actions needed for the
   # compute stack don't support meaningful resource-level scoping for these
