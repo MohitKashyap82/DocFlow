@@ -19,6 +19,7 @@ Two independent Terraform stacks, both with state in S3 (`complyflow-tf-state-26
 3. In the GitHub repo → Settings → Environments → create an environment named `AWS_ROLE_ARN` → add an **environment secret** also named `AWS_ROLE_ARN` = the `github_actions_role_arn` output from step 1. (Every workflow job references this via `environment: AWS_ROLE_ARN` + `${{ secrets.AWS_ROLE_ARN }}`.)
 
    This value isn't actually sensitive on its own — auth is via OIDC, so there's no static AWS key being stored, and the trust policy (scoped to `repo:MohitKashyap82/DocFlow:*`) is what actually gates access, not secrecy of the ARN. It's stored as an environment secret here mainly so the environment can later carry protection rules (e.g. required reviewers) as a manual approval gate before infra-mutating jobs run.
+4. Add a repo **variable** (Settings → Secrets and variables → Actions → Variables) named `ALERT_EMAIL` set to the address that should be subscribed to the `complyflow-events` SNS topic. `backbone.yml` passes it through as `TF_VAR_alert_email`; `infra/backbone/variables.tf` has no default for it on purpose, so it isn't published in source. Running Terraform locally needs the same: `export TF_VAR_alert_email=you@example.com` (or `-var`) before `plan`/`apply`.
 
 ## Day to day
 
